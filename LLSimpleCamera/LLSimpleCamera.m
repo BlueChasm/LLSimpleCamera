@@ -11,7 +11,10 @@
 #import "UIImage+FixOrientation.h"
 #import "LLSimpleCamera+Helper.h"
 
-@interface LLSimpleCamera () <AVCaptureFileOutputRecordingDelegate, UIGestureRecognizerDelegate>
+@interface LLSimpleCamera () <AVCaptureFileOutputRecordingDelegate, UIGestureRecognizerDelegate, AVCaptureVideoDataOutputSampleBufferDelegate> {
+  dispatch_queue_t videoDataOutputQueue;
+}
+
 @property (strong, nonatomic) UIView *preview;
 @property (strong, nonatomic) AVCaptureStillImageOutput *stillImageOutput;
 @property (strong, nonatomic) AVCaptureSession *session;
@@ -20,6 +23,8 @@
 @property (strong, nonatomic) AVCaptureDeviceInput *videoDeviceInput;
 @property (strong, nonatomic) AVCaptureDeviceInput *audioDeviceInput;
 @property (strong, nonatomic) AVCaptureVideoPreviewLayer *captureVideoPreviewLayer;
+@property (strong, nonatomic) AVCaptureVideoDataOutput *videoDataOutput;
+
 @property (strong, nonatomic) UITapGestureRecognizer *tapGesture;
 @property (strong, nonatomic) CALayer *focusBoxLayer;
 @property (strong, nonatomic) CAAnimation *focusBoxAnimation;
@@ -28,6 +33,7 @@
 @property (nonatomic, assign) CGFloat beginGestureScale;
 @property (nonatomic, assign) CGFloat effectiveScale;
 @property (nonatomic, copy) void (^didRecordCompletionBlock)(LLSimpleCamera *camera, NSURL *outputFileUrl, NSError *error);
+@property (nonatomic, copy) void (^didCaptureOutputCompletionBlock)(LLSimpleCamera *camera, CMSampleBufferRef sampleBuffer, NSError *error);
 @end
 
 NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
@@ -367,6 +373,10 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
 
 #pragma mark - Video Capture
 
+- (void)outputCaptured:(void (^)(LLSimpleCamera *camera, CMSampleBufferRef sampleBuffer, NSError *error))completionBlock {
+  self.didCaptureOutputCompletionBlock = completionBlock;
+}
+
 - (void)startRecordingWithOutputUrl:(NSURL *)url didRecord:(void (^)(LLSimpleCamera *camera, NSURL *outputFileUrl, NSError *error))completionBlock
 {
     // check if video is enabled
@@ -488,6 +498,20 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
         __weak typeof(self) weakSelf = self;
         self.onDeviceChange(weakSelf, videoCaptureDevice);
     }
+  
+  self.videoDataOutput = [AVCaptureVideoDataOutput new];
+  
+  NSDictionary *rgbOutputSettings = [NSDictionary
+                                     dictionaryWithObject:[NSNumber numberWithInt:kCMPixelFormat_32BGRA]
+                                     forKey:(id)kCVPixelBufferPixelFormatTypeKey];
+  [self.videoDataOutput setVideoSettings:rgbOutputSettings];
+  [self.videoDataOutput setAlwaysDiscardsLateVideoFrames:YES];
+  videoDataOutputQueue = dispatch_queue_create("VideoDataOutputQueue", DISPATCH_QUEUE_SERIAL);
+  [self.videoDataOutput setSampleBufferDelegate:self queue:videoDataOutputQueue];
+  
+  if ([self.session canAddOutput:self.videoDataOutput])
+    [self.session addOutput:self.videoDataOutput];
+  [[self.videoDataOutput connectionWithMediaType:AVMediaTypeVideo] setEnabled:YES];
 }
 
 - (BOOL)isFlashAvailable
@@ -876,4 +900,9 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
     return [UIImagePickerController isCameraDeviceAvailable:UIImagePickerControllerCameraDeviceRear];
 }
 
+- (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
+  if (self.didCaptureOutputCompletionBlock) {
+    self.didCaptureOutputCompletionBlock(self, sampleBuffer, nil);
+  }
+}
 @end
