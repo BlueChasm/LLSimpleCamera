@@ -33,7 +33,7 @@
 @property (nonatomic, assign) CGFloat beginGestureScale;
 @property (nonatomic, assign) CGFloat effectiveScale;
 @property (nonatomic, copy) void (^didRecordCompletionBlock)(LLSimpleCamera *camera, NSURL *outputFileUrl, NSError *error);
-@property (nonatomic, copy) void (^didCaptureOutputCompletionBlock)(LLSimpleCamera *camera, CMSampleBufferRef sampleBuffer, NSError *error);
+@property (nonatomic, copy) void (^didCaptureOutputCompletionBlock)(LLSimpleCamera *camera, CVPixelBufferRef pixelBuffer, NSError *error);
 @end
 
 NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
@@ -200,15 +200,17 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
 - (void)initialize
 {
     if(!_session) {
-        _session = [[AVCaptureSession alloc] init];
+        _session = [AVCaptureSession new];
         _session.sessionPreset = self.cameraQuality;
         
         // preview layer
         CGRect bounds = self.preview.layer.bounds;
         _captureVideoPreviewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:self.session];
-        _captureVideoPreviewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+        _captureVideoPreviewLayer.videoGravity = AVLayerVideoGravityResizeAspect;
         _captureVideoPreviewLayer.bounds = bounds;
         _captureVideoPreviewLayer.position = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
+        _captureVideoPreviewLayer.backgroundColor = [[UIColor blackColor] CGColor];
+      
         [self.preview.layer addSublayer:_captureVideoPreviewLayer];
         
         AVCaptureDevicePosition devicePosition;
@@ -373,7 +375,7 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
 
 #pragma mark - Video Capture
 
-- (void)outputCaptured:(void (^)(LLSimpleCamera *camera, CMSampleBufferRef sampleBuffer, NSError *error))completionBlock {
+- (void)outputCaptured:(void (^)(LLSimpleCamera *camera, CVPixelBufferRef pixelBuffer, NSError *error))completionBlock {
   self.didCaptureOutputCompletionBlock = completionBlock;
 }
 
@@ -504,6 +506,7 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
   NSDictionary *rgbOutputSettings = [NSDictionary
                                      dictionaryWithObject:[NSNumber numberWithInt:kCMPixelFormat_32BGRA]
                                      forKey:(id)kCVPixelBufferPixelFormatTypeKey];
+  
   [self.videoDataOutput setVideoSettings:rgbOutputSettings];
   [self.videoDataOutput setAlwaysDiscardsLateVideoFrames:YES];
   videoDataOutputQueue = dispatch_queue_create("VideoDataOutputQueue", DISPATCH_QUEUE_SERIAL);
@@ -901,8 +904,10 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
 }
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
+  CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+  
   if (self.didCaptureOutputCompletionBlock) {
-    self.didCaptureOutputCompletionBlock(self, sampleBuffer, nil);
+    self.didCaptureOutputCompletionBlock(self, pixelBuffer, nil);
   }
 }
 @end

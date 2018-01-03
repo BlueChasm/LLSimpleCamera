@@ -175,7 +175,7 @@ typedef enum : NSUInteger {
  */
 - (void)startRecordingWithOutputUrl:(NSURL *)url didRecord:(void (^)(LLSimpleCamera *camera, NSURL *outputFileUrl, NSError *error))completionBlock;
 
-- (void)outputCaptured:(void (^)(LLSimpleCamera *camera, CMSampleBufferRef sampleBuffer, NSError *error))completionBlock;
+- (void)outputCaptured:(void (^)(LLSimpleCamera *camera, CVPixelBufferRef pixelBuffer, NSError *error))completionBlock;
 
 /**
  * Stop recording video.
